@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -27,9 +28,60 @@ type goCryptorUI struct {
 	fileName         string
 	fileNameLabel    *widget.Label
 	overwriteFile    bool
+	logger           *log.Logger
 }
 
 func (ui *goCryptorUI) encryptFile() {
+	err := ui.validateInformation()
+	if err != nil {
+		return
+	}
+	isDir, err := validateFileName(ui.fileName)
+	if err != nil {
+		ui.logger.Println("Validation error: ", err)
+		ui.statusLabel.SetText("Error: " + err.Error())
+		go ui.statusFade(3)
+		return
+	}
+	if isDir {
+		err = filepath.Walk(ui.fileName, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if info.IsDir() {
+				return nil
+			}
+			err = encryptor.EncryptFile(ui.passwordEntry.Text, path)
+			if err != nil {
+				ui.logger.Printf("Error encrypting file: %s err: %s", path, err)
+				ui.statusLabel.SetText("Error encrypting file: " + err.Error())
+				return nil
+			}
+			ui.logger.Println("Success encrypting file: ", path)
+			return nil
+		})
+		if err != nil {
+			ui.logger.Println("Walk dir err: ", err)
+			return
+		}
+	} else {
+		err = encryptor.EncryptFile(ui.passwordEntry.Text, ui.fileName)
+		if err != nil {
+			ui.logger.Printf("Error encrypting file: %s err: %s", ui.fileName, err)
+			ui.statusLabel.SetText("Error encrypting file: " + err.Error())
+			return
+		}
+		ui.logger.Println("Success encrypting file: ", ui.fileName)
+	}
+	ui.statusLabel.SetText("Success encrypting file(s)!")
+	go ui.statusFade(5)
+	ui.passwordEntry.SetText("")
+	ui.passConfirmEntry.SetText("")
+	ui.fileName = ""
+	ui.fileNameLabel.SetText("File Path: ")
+}
+
+func (ui *goCryptorUI) decryptFile() {
 	err := ui.validateInformation()
 	if err != nil {
 		return
@@ -48,42 +100,32 @@ func (ui *goCryptorUI) encryptFile() {
 			if info.IsDir() {
 				return nil
 			}
-			err = encryptor.EncryptFile(ui.passwordEntry.Text, path)
+			if filepath.Ext(path) != ".gcx" {
+				ui.logger.Println("not the expected encryption extension...")
+				return nil
+			}
+			ui.logger.Println("Working on file: ", path)
+			err = encryptor.DecryptFile(ui.passwordEntry.Text, path, ui.overwriteFile)
 			if err != nil {
-				ui.statusLabel.SetText("Error encrypting file: " + err.Error())
+				ui.logger.Println("error decrypting file!", err)
+				ui.statusLabel.SetText("Error decrypting file: " + err.Error())
 				return nil
 			}
 			return nil
 		})
 		if err != nil {
-			fmt.Println("Walk dir err: ", err)
+			ui.logger.Println("Walk dir err: ", err)
 		}
 	} else {
-		err = encryptor.EncryptFile(ui.passwordEntry.Text, ui.fileName)
+		err = encryptor.DecryptFile(ui.passwordEntry.Text, ui.fileName, ui.overwriteFile)
 		if err != nil {
-			ui.statusLabel.SetText("Error encrypting file: " + err.Error())
+			ui.logger.Println("error decrypting file! ", err)
+			ui.statusLabel.SetText("Error decrypting file: " + err.Error())
 			return
 		}
+		ui.logger.Println("Decrypted file: ", ui.fileName)
 	}
-	ui.statusLabel.SetText("Success encrypting file(s)!")
-	go ui.statusFade(5)
-	ui.passwordEntry.SetText("")
-	ui.passConfirmEntry.SetText("")
-	ui.fileName = ""
-	ui.fileNameLabel.SetText("File Path: ")
-}
 
-func (ui *goCryptorUI) decryptFile() {
-	err := ui.validateInformation()
-	if err != nil {
-		return
-	}
-	err = encryptor.DecryptFile(ui.passwordEntry.Text, ui.fileName, ui.overwriteFile)
-	if err != nil {
-		ui.statusLabel.SetText("Error decrypting file: " + err.Error())
-		go ui.statusFade(8)
-		return
-	}
 	ui.statusLabel.SetText("Success decrypting file!")
 	go ui.statusFade(8)
 	ui.passwordEntry.SetText("")
@@ -95,19 +137,21 @@ func (ui *goCryptorUI) decryptFile() {
 func (ui *goCryptorUI) validateInformation() error {
 	errStatus := errors.New("information validation failed")
 	if ui.passwordEntry.Text == "" {
+		ui.logger.Println("Passwords cannot be empty!")
 		ui.statusLabel.SetText("Password cannot be empty!")
 		go ui.statusFade(3)
 		return errStatus
 	}
 	if ui.passwordEntry.Text == ui.passConfirmEntry.Text {
+		ui.logger.Println("Confirmed passwords...")
 		ui.statusLabel.SetText("Confirmed passwords...")
 		go ui.statusFade(3)
 		return nil
-	} else {
-		ui.statusLabel.SetText("Passwords do not match! Please try again.")
-		go ui.statusFade(3)
-		return errStatus
 	}
+	ui.logger.Println("Passwords do not match! Please try again.")
+	ui.statusLabel.SetText("Passwords do not match! Please try again.")
+	go ui.statusFade(3)
+	return errStatus
 }
 
 func (ui *goCryptorUI) statusFade(waitTime time.Duration) {
@@ -121,6 +165,7 @@ func (ui *goCryptorUI) browseFile() string {
 		return ""
 	}
 	if err != nil {
+		ui.logger.Println("File picker failure: ", err)
 		ui.statusLabel.SetText("File picker failure: " + err.Error())
 		ui.statusFade(4)
 		os.Exit(0)
@@ -135,14 +180,15 @@ func (ui *goCryptorUI) browseFolder() string {
 	}
 	if err != nil {
 		ui.statusLabel.SetText("Folder picker failure: " + err.Error())
+		ui.logger.Println("Folder picker failure: ", err)
 		ui.statusFade(4)
 		os.Exit(0)
 	}
-	fmt.Println("FolderName: ", folderName)
+	ui.logger.Println("FolderName Selected: ", folderName)
 	return folderName
 }
 
-func parseFlags() (string, string) {
+func parseFlags(logger *log.Logger) (string, string) {
 	flaggy.SetName("goCryptor")
 	flaggy.SetDescription("Encrypts and decrypts files and folders")
 	flaggy.DefaultParser.ShowHelpOnUnexpected = true
@@ -160,7 +206,6 @@ func parseFlags() (string, string) {
 		os.Exit(0)
 	}
 	if encryptFlag != "" {
-		fmt.Println("Encrypt file: ", encryptFlag)
 		return "encrypt", encryptFlag
 	}
 	if decryptFlag != "" {
@@ -187,17 +232,28 @@ func validateFileName(fileName string) (bool, error) {
 }
 
 func main() {
+	// Setup log file
+	f, err := os.OpenFile("goCryptor.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Println("unable to create log file: ", err)
+	}
+	defer f.Close()
+
+	logger := log.New(f, "goCryptor: ", log.LstdFlags)
+	logger.Println("goCryptor Log File")
 	// Setup our main app struct
 	ui := goCryptorUI{}
+	// add our logger
+	ui.logger = logger
 	// action attempts to automatically determine if we are encrypting or decrypting
 	ui.action = "encrypt"
 	// fileName is the name of the file or folder to encrypt
-	actionText, fileName := parseFlags()
+	actionText, fileName := parseFlags(logger)
 	ui.fileName = fileName
 	if fileName != "" {
 		_, err := validateFileName(fileName)
 		if err != nil {
-			fmt.Println("error reading file: ", err)
+			logger.Println("error reading file: ", err)
 			os.Exit(0)
 		}
 	}

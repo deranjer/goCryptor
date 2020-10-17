@@ -6,7 +6,6 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -116,7 +115,6 @@ func DecryptFile(password, encryptedFile string, overwrite bool) error {
 	newFileName := strings.TrimSuffix(newFileNameFull, string(fileExt))
 	// check if file exists and if we shouldn't overwrite then add decrypt to the file name
 	if !overwrite {
-		fmt.Println("cannot overwrite existing file...")
 		fullFileName := newFileName + string(fileExt)
 		_, err := os.Stat(fullFileName)
 		if os.IsNotExist(err) {
@@ -125,13 +123,12 @@ func DecryptFile(password, encryptedFile string, overwrite bool) error {
 				return errors.New("Error writing plaintext file: " + err.Error())
 			}
 			return nil
-		} else {
-			err = ioutil.WriteFile(newFileName+"-decrypt"+string(fileExt), plaintext, 0644)
-			if err != nil {
-				return errors.New("Error writing plaintext (decrypt string) file: " + err.Error())
-			}
-			return nil
 		}
+		err = ioutil.WriteFile(newFileName+"-decrypt"+string(fileExt), plaintext, 0644)
+		if err != nil {
+			return errors.New("Error writing plaintext (decrypt string) file: " + err.Error())
+		}
+		return nil
 	}
 	// if we can overwrite, then write out the decrypted file
 	err = ioutil.WriteFile(newFileName+string(fileExt), plaintext, 0644)
