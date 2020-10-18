@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/deranjer/gocryptor/encryptor"
+	"github.com/deranjer/gocryptor/resources"
 	"github.com/integrii/flaggy"
 	"github.com/sqweek/dialog"
 
@@ -258,7 +259,7 @@ func main() {
 		}
 	}
 	mainApp := app.New()
-	//mainApp.SetIcon()
+	mainApp.SetIcon(resources.GoCryptorIcon)
 	mainWindow := mainApp.NewWindow("goCryptor")
 	mainWindow.SetFixedSize(true)
 	mainWindow.CenterOnScreen()
