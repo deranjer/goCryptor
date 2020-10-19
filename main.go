@@ -266,7 +266,7 @@ func main() {
 	// Setup the text at the top of the app
 	mainTitle := widget.NewLabelWithStyle("goCryptor", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
 	// Setup file selection area
-	ui.fileNameLabel = widget.NewLabel("File Path: " + ui.fileName)
+	ui.fileNameLabel = widget.NewLabel("File Path: " + filepath.Base(ui.fileName))
 	// create the overwrite check box, and set it to true by default
 	overwriteCheck := widget.NewCheck("Overwrite on Decrypt", func(bool) {
 		if ui.overwriteFile == true {
